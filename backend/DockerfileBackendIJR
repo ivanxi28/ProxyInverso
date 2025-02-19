@@ -1,38 +1,25 @@
 # Usar la imagen oficial de PHP con Apache
 FROM php:8.2-apache
-
 # Instalar extensiones necesarias
 RUN apt-get update && apt-get install -y \
-    git \
-    unzip \
-    libicu-dev \
-    libzip-dev \
-    libonig-dev \
-    && docker-php-ext-install pdo pdo_mysql intl zip
-
+ git \
+ unzip \
+ libicu-dev \
+ && docker-php-ext-install pdo pdo_mysql
 # Instalar Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-
-# Configurar directorio de trabajo
 WORKDIR /app
-
-# Copiar solo archivos necesarios para optimizar caché
-COPY composer.json composer.lock ./
-
-# Instalar dependencias con Composer
-RUN COMPOSER_MEMORY_LIMIT=-1 composer install --no-interaction --no-progress --prefer-dist
-
-# Copiar el resto de los archivos del proyecto
+# Copiar archivos del backend al contenedor
 COPY . .
-
-# Ajustar permisos para la carpeta var/
+# Instalar dependencias con Composer
+RUN composer install
+RUN composer require symfony/orm-pack doctrine/doctrine-bundle
+RUN composer require doctrine/dbal
+# Ejecutar migraciones al construir la imagen
+RUN php bin/console doctrine:migrations:diff || true
+RUN php bin/console doctrine:migrations:migrate --no-interaction || true
+# Establecer permisos para el directorio var
 RUN chmod -R 777 /app/var
-
-# Ejecutar migraciones si existen
-RUN if [ -d "migrations" ]; then php bin/console doctrine:migrations:migrate --no-interaction; fi
-
-# Exponer el puerto (Apache usa el 80 por defecto)
-EXPOSE 80
-
-# Usar Apache como servidor
-CMD ["apache2-foreground"]
+# Exponer el puerto
+EXPOSE 8000
+CMD ["php", "-S", "0.0.0.0:8000", "-t", "public"]
